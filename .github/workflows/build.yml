@@ -3,9 +3,12 @@ name: Build Android APK
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -15,16 +18,35 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug
+      - name: Find project and build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PROJECT_FILE=$(find . -type f \
+            -name settings.gradle.kts \
+            -not -path '*/.gradle/*' \
+            -print -quit)
+
+          if [ -z "$PROJECT_FILE" ]; then
+            echo "::error::Project files not found. Upload extracted project files, not only the ZIP."
+            exit 1
+          fi
+
+          cd "$(dirname "$PROJECT_FILE")"
+          printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+          gradle assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: sms-manager-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: "**/app/build/outputs/apk/debug/*.apk"
+          if-no-files-found: error
